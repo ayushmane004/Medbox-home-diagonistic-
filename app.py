@@ -673,7 +673,7 @@ with tab5:
 st.markdown("---")
 st.markdown(
     "<div style='text-align:center;color:#94a3b8;font-size:12px;'>"
-    "MedBox Analytics Dashboard · Synthetic Dataset · Academic Submission · 2024 · "
+    "MedBox Analytics Dashboard · Synthetic Dataset · "
     "Built with Streamlit + Plotly · "
     "<b>Ayush Mane | MS25mm060 | </b>"
     "</div b>",
