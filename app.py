@@ -131,6 +131,9 @@ avg_order      = conv["Order_Value_INR"].mean() if len(conv) > 0 else 0
 avg_nps        = conv["NPS_Score"].mean() if len(conv) > 0 else 0
 upsell_rate    = (conv["Consultation_Upsell"] == "Yes").mean() * 100 if len(conv) > 0 else 0
 
+# ── FIX 1: Dynamic lost leads count ──────────────────────────────────────────
+lost_count = int((dff["Pipeline_Stage"] == "Lost").sum())
+
 for col, label, value, fmt in [
     (k1, "Total Leads",      total_leads,  "{:,}"),
     (k2, "Conversions",      total_conv,   "{:,}"),
@@ -189,7 +192,9 @@ with tab1:
             font=dict(family="Arial", size=12)
         )
         st.plotly_chart(fig_funnel, use_container_width=True)
-        st.markdown(f'<div class="insight-box">The funnel shows a <b>{conv_rate:.1f}%</b> overall conversion rate — competitive for D2C health (benchmark: 25–35%). The 48 "Lost" leads represent a re-engagement opportunity worth ₹{48*avg_order:,.0f} in potential recovered revenue.</div>', unsafe_allow_html=True)
+
+        # ── FIX 1 applied: dynamic lost_count ────────────────────────────────
+        st.markdown(f'<div class="insight-box">The funnel shows a <b>{conv_rate:.1f}%</b> overall conversion rate — competitive for D2C health (benchmark: 25–35%). The <b>{lost_count}</b> "Lost" leads represent a re-engagement opportunity worth ₹{lost_count * avg_order:,.0f} in potential recovered revenue.</div>', unsafe_allow_html=True)
 
     with c2:
         st.markdown('<div class="section-header">Lead Channel — Conversion Rate</div>', unsafe_allow_html=True)
@@ -252,9 +257,13 @@ with tab1:
         rep_stats = rep_stats.sort_values("Revenue", ascending=False)
 
         fig_rep = go.Figure()
+
+        # ── FIX 2: Added revenue labels to bar chart ──────────────────────────
         fig_rep.add_trace(go.Bar(
             name="Revenue (₹)", x=rep_stats["Assigned_Rep"], y=rep_stats["Revenue"],
-            marker_color=COLORS["primary"], yaxis="y"
+            marker_color=COLORS["primary"], yaxis="y",
+            text=rep_stats["Revenue"].apply(lambda x: f"₹{x:,.0f}"),
+            textposition="outside"
         ))
         fig_rep.add_trace(go.Scatter(
             name="Conv Rate (%)", x=rep_stats["Assigned_Rep"], y=rep_stats["Conv_Rate"],
@@ -270,6 +279,10 @@ with tab1:
             font=dict(family="Arial", size=12)
         )
         st.plotly_chart(fig_rep, use_container_width=True)
+
+        # ── FIX 3: Added insight box for sales rep ────────────────────────────
+        top_rep = rep_stats.iloc[0]
+        st.markdown(f'<div class="insight-box"><b>{top_rep["Assigned_Rep"]}</b> leads in revenue at <b>₹{top_rep["Revenue"]:,.0f}</b> with a <b>{top_rep["Conv_Rate"]:.1f}%</b> conversion rate. Consider using top rep strategies as a training benchmark for the team.</div>', unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -471,6 +484,33 @@ with tab3:
     )
     st.plotly_chart(fig_hist, use_container_width=True)
 
+    # ── FIX 4: Gender split chart (shown only if column exists) ──────────────
+    if "Gender" in dff.columns:
+        st.markdown("---")
+        st.markdown('<div class="section-header">Gender — Lead Volume & Conversion Rate</div>', unsafe_allow_html=True)
+        gender_stats = dff[dff["Gender"].notna()].groupby("Gender").agg(
+            Leads=("Lead_ID", "count"),
+            Converted=("Is_Converted", "sum")
+        ).reset_index()
+        gender_stats["Conv_Rate"] = gender_stats["Converted"] / gender_stats["Leads"] * 100
+
+        fig_gender = px.bar(
+            gender_stats, x="Gender", y="Leads",
+            color="Conv_Rate", color_continuous_scale=["#93c5fd", "#1e3a5f"],
+            text=gender_stats["Conv_Rate"].round(1).astype(str) + "%",
+            labels={"Leads": "Total Leads", "Conv_Rate": "Conv Rate (%)"}
+        )
+        fig_gender.update_traces(textposition="outside")
+        fig_gender.update_layout(
+            height=300, margin=dict(l=10, r=10, t=10, b=10),
+            plot_bgcolor="white", paper_bgcolor="white",
+            coloraxis_showscale=True,
+            font=dict(family="Arial", size=12)
+        )
+        st.plotly_chart(fig_gender, use_container_width=True)
+        top_gender = gender_stats.sort_values("Conv_Rate", ascending=False).iloc[0]
+        st.markdown(f'<div class="insight-box"><b>{top_gender["Gender"]}</b> leads in conversion rate at <b>{top_gender["Conv_Rate"]:.1f}%</b>. Use gender-specific messaging in ad creatives to improve targeting efficiency.</div>', unsafe_allow_html=True)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — CORRELATION ANALYSIS
@@ -598,6 +638,9 @@ with tab4:
     stats_df = pd.DataFrame(stats_rows)
     st.dataframe(stats_df, use_container_width=True, hide_index=True)
 
+    # ── FIX 5: Summary insight box at end of correlation tab ─────────────────
+    st.markdown('<div class="insight-box">📌 <b>Key Takeaway:</b> <b>NPS Score ↔ Order Value</b> has the strongest positive correlation (r≈0.41), while <b>Days to Convert ↔ Is Converted</b> is weakly negative — suggesting faster pipelines convert better. Focus on reducing friction in the sales process to improve both speed and volume of conversions.</div>', unsafe_allow_html=True)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 5 — RAW DATA
@@ -626,12 +669,13 @@ with tab5:
         st.download_button("Download filtered CSV", data=csv_data,
                            file_name="medbox_filtered.csv", mime="text/csv")
 
-# ── Footer ────────────────────────────────────────────────────────────────────
+# ── Footer — FIX 6: Add your name & roll number ───────────────────────────────
 st.markdown("---")
 st.markdown(
     "<div style='text-align:center;color:#94a3b8;font-size:12px;'>"
     "MedBox Analytics Dashboard · Synthetic Dataset · Academic Submission · 2024 · "
-    "Built with Streamlit + Plotly"
-    "</div>",
+    "Built with Streamlit + Plotly · "
+    "<b>Ayush Mane | MS25mm060 | </b>"
+    "</div b>",
     unsafe_allow_html=True
 )
